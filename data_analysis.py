@@ -37,3 +37,22 @@ for i in range(0, 10):
     sns.kdeplot(data_train.loc[:, cell_feat[i]], color = 'blue', shade = True)
     plt.xlabel(cell_feat[i])
 plt.show()
+
+'''relationship between random feature and random target'''
+train_copy = data_train.copy()
+train_copy['target_71'] = data_target_scored.iloc[:, 72]
+fig3 = plt.figure(3)
+sns.stripplot(data = train_copy, x = 'cp_time', y = 'g-1', color = 'blue', hue = 'target_71')
+plt.show()
+fig4 = plt.figure(4)
+sns.stripplot(data = train_copy, x = 'cp_dose', y = 'c-1', color = 'red', hue = 'target_71')
+plt.show()
+
+train_copy['g_mean'] = train_copy.loc[:, gene_feat].mean(axis = 1)
+train_copy['c_mean'] = train_copy.loc[:, cell_feat].mean(axis = 1)
+fig4 = plt.figure(5)
+ax1 = fig4.add_subplot(121)
+sns.stripplot(data = train_copy, x = 'cp_time', y = 'g_mean', color = 'blue', hue = 'target_71', ax = ax1)
+ax2 = fig4.add_subplot(122)
+sns.stripplot(data = train_copy, x = 'cp_dose', y = 'g_mean', color = 'blue', hue = 'target_71', ax = ax2)
+plt.show()
