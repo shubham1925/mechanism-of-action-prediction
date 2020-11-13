@@ -50,9 +50,20 @@ plt.show()
 
 train_copy['g_mean'] = train_copy.loc[:, gene_feat].mean(axis = 1)
 train_copy['c_mean'] = train_copy.loc[:, cell_feat].mean(axis = 1)
-fig4 = plt.figure(5)
-ax1 = fig4.add_subplot(121)
+fig5 = plt.figure(5)
+ax1 = fig5.add_subplot(121)
 sns.stripplot(data = train_copy, x = 'cp_time', y = 'g_mean', color = 'blue', hue = 'target_71', ax = ax1)
-ax2 = fig4.add_subplot(122)
+ax2 = fig5.add_subplot(122)
 sns.stripplot(data = train_copy, x = 'cp_dose', y = 'g_mean', color = 'blue', hue = 'target_71', ax = ax2)
+plt.show()
+
+'''explore targets'''
+target_s = data_target_scored.copy()
+target_s.drop('sig_id', axis = 1, inplace = True)
+fig6 = plt.figure(6)
+k = 1
+for i in np.random.choice(np.arange(0, target_s.shape[1], 1), 4):
+    plt.subplot(10, 4, k)
+    sns.countplot(y = target_s.iloc[:, i], palette = 'nipy_spectral', orient = 'h')
+    k = k+1
 plt.show()
