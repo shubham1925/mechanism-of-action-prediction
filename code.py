@@ -91,3 +91,28 @@ X_test = pd.DataFrame(X_test[['sig_id', 'cp_type', 'cp_time', 'cp_dose']].values
 
 X = pd.concat([X, pd.DataFrame(train_features_transformed)], axis = 1)
 X_test = pd.concat([X_test, pd.DataFrame(test_features_transformed)], axis = 1)
+
+from sklearn.cluster import KMeans
+
+def fe_clusters(train, test, n_clusters_g = 35, n_clusters_c = 5, seed = 200):
+    features_g = list(data_train.columns[4:776])
+    features_c = list(data_train.columns[776:876])
+    def create_clusters(train, test, features, kind, n_clusters):
+        train_ = train[features].copy()
+        test_ = test[features].copy()
+        data = pd.concat([train_, test_], axis = 0)
+        kmeans = KMeans(n_clusters = n_clusters, random_state = seed).fit(data)
+        train[f'clusters_{kind}'] = kmeans.labels_[:train.shape[0]]
+        test[f'clusters_{kind}'] = kmeans.labels_[train.shape[0]:]
+        train = pd.get_dummies(train, columns = [f'clusters_{kind}'])
+        test = pd.get_dummies(test, columns = [f'clusters_{kind}'])
+        return train, test
+    
+    train2, test2 = create_clusters(train, test, features_g, 'g', n_clusters_g)
+    train2, test2 = create_clusters(train, test, features_c, 'c', n_clusters_c)
+    return train2, test2
+
+X, X_test = fe_clusters(X, X_test)
+print(X.shape)
+print(' ')
+print(X_test.shape)
