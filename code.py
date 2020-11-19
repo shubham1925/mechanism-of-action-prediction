@@ -8,9 +8,9 @@ Created on Tue Nov 10 12:28:30 2020
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.preprocessing import QuantileTransformer
 from sklearn.decomposition import PCA
+import tensorflow as tf
 
 
 data_train = pd.read_csv(r'C:\Users\shubh\Desktop\PMRO\SEM3\ENPM808A - Intro to ML\Final Project\lish-moa\train_features.csv')
@@ -94,9 +94,12 @@ X_test = pd.concat([X_test, pd.DataFrame(test_features_transformed)], axis = 1)
 
 from sklearn.cluster import KMeans
 
+#data_train = pd.read_csv(r'C:\Users\shubh\Desktop\PMRO\SEM3\ENPM808A - Intro to ML\Final Project\lish-moa\train_features.csv')
+#data_test = pd.read_csv(r'C:\Users\shubh\Desktop\PMRO\SEM3\ENPM808A - Intro to ML\Final Project\lish-moa\test_features.csv')
+
 def fe_clusters(train, test, n_clusters_g = 35, n_clusters_c = 5, seed = 200):
-    features_g = list(data_train.columns[4:776])
-    features_c = list(data_train.columns[776:876])
+    features_g = list(train.columns[4:776])
+    features_c = list(train.columns[776:876])
     def create_clusters(train, test, features, kind, n_clusters):
         train_ = train[features].copy()
         test_ = test[features].copy()
@@ -108,11 +111,38 @@ def fe_clusters(train, test, n_clusters_g = 35, n_clusters_c = 5, seed = 200):
         test = pd.get_dummies(test, columns = [f'clusters_{kind}'])
         return train, test
     
-    train2, test2 = create_clusters(train, test, features_g, 'g', n_clusters_g)
-    train2, test2 = create_clusters(train, test, features_c, 'c', n_clusters_c)
-    return train2, test2
+    train, test = create_clusters(train, test, features_g, 'g', n_clusters_g)
+    train, test = create_clusters(train, test, features_c, 'c', n_clusters_c)
+    return train, test
 
+print("here")
 X, X_test = fe_clusters(X, X_test)
 print(X.shape)
 print(' ')
 print(X_test.shape)
+X.drop(['cp_type'], axis = 1, inplace = True)
+X_test.drop(['cp_type'], axis = 1, inplace = True)
+
+import tensorflow.keras.backend as K
+
+def logloss(y_true, y_pred):
+    y_pred = tf.clip_by_value(y_pred, 0.001, 0.999)
+    return -K.mean(y_true*K.log(y_pred) + (1 - y_true)*K.log(1 - y_pred))
+
+def create_model(hp):
+    num_cols = X.shape[1]
+    inp = tf.keras.layers.Input(shape = (num_cols, ))
+    x = tf.keras.layers.BatchNormalization()(inp)
+    num_dense = hp.Int('num_dense', min_value = 0, max_value = 3, step = 1)
+    for i in range(num_dense):
+        hp_units = hp.Int('units_{i}'.format(i=i), min_value = 128, max_value = 4096, step = 128)
+        hp_drop_rate = hp.Choice('dp_{i}'.format(i=i), values = [0.25, 0.3, 0.35, 0.40, 0.45, 0.60, 0.65, 0.70])
+        hp_activation = hp.Choice('dense_activation_{i}'.format(i=i), values = ['relu', 'selu', 'elu', 'swish'])
+        x = tf.keras.layers.Dense(units = hp_units, activation = hp_activation)(x)
+        x = tf.keras.layers.Dropout(hp_drop_rate)(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+    outputs = tf.keras.layers.Dense(206, activation = 'sigmoid')(x)
+    model = tf.keras.Model(inp, outputs)
+    learning_rate = 1e-3
+    model.compile(optimizer = tf.keras.optimizers.Adam(learning_rate = learning_rate), loss = tf.keras.losses.BinaryCrossentropy(label_smoothing = 0.001), metrics = logloss)
+    return model  
