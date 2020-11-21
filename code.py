@@ -92,6 +92,9 @@ X_test = pd.DataFrame(X_test[['sig_id', 'cp_type', 'cp_time', 'cp_dose']].values
 X = pd.concat([X, pd.DataFrame(train_features_transformed)], axis = 1)
 X_test = pd.concat([X_test, pd.DataFrame(test_features_transformed)], axis = 1)
 
+y = data_target_scored.drop('sig_id', axis=1)
+y0 =  data_target_nonscored.drop('sig_id', axis=1)
+
 from sklearn.cluster import KMeans
 
 #data_train = pd.read_csv(r'C:\Users\shubh\Desktop\PMRO\SEM3\ENPM808A - Intro to ML\Final Project\lish-moa\train_features.csv')
@@ -146,3 +149,68 @@ def create_model(hp):
     learning_rate = 1e-3
     model.compile(optimizer = tf.keras.optimizers.Adam(learning_rate = learning_rate), loss = tf.keras.losses.BinaryCrossentropy(label_smoothing = 0.001), metrics = logloss)
     return model  
+
+y0 = y0[X['cp_type'] == 'trt_cp'].reset_index(drop = True)
+y = y[X['cp_type'] == 'trt_cp'].reset_index(drop = True)
+X = X[X['cp_type'] == 'trt_cp'].reset_index(drop = True)
+X.drop(['cp_type'], axis=1, inplace=True)
+X_test.drop(['cp_type'], axis=1, inplace=True)
+
+import tensorflow.keras.backend as K
+import kerastuner as kt
+from tensorflow.keras.callbacks import EarlyStopping
+from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
+
+def logloss(y_true, y_pred):
+    y_pred = tf.clip_by_value(y_pred, 0.001, 0.999)
+    return -K.mean(y_true*K.log(y_pred) + (1 - y_true)*K.log(1 - y_pred))
+
+def create_model(hp):
+    num_cols = X.shape[1]
+    inp = tf.keras.layers.Input(shape = (num_cols, ))
+    x = tf.keras.layers.BatchNormalization()(inp)
+    num_dense = hp.Int('num_dense', min_value = 0, max_value = 3, step = 1)
+    for i in range(num_dense):
+        hp_units = hp.Int('units_{i}'.format(i=i), min_value = 128, max_value = 4096, step = 128)
+        hp_drop_rate = hp.Choice('dp_{i}'.format(i=i), values = [0.25, 0.3, 0.35, 0.40, 0.45, 0.60, 0.65, 0.70])
+        hp_activation = hp.Choice('dense_activation_{i}'.format(i=i), values = ['relu', 'selu', 'elu', 'swish'])
+        x = tf.keras.layers.Dense(units = hp_units, activation = hp_activation)(x)
+        x = tf.keras.layers.Dropout(hp_drop_rate)(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+    outputs = tf.keras.layers.Dense(206, activation = 'sigmoid')(x)
+    model = tf.keras.Model(inp, outputs)
+    learning_rate = 1e-3
+    model.compile(optimizer = tf.keras.optimizers.Adam(learning_rate = learning_rate), loss = tf.keras.losses.BinaryCrossentropy(label_smoothing = 0.001), metrics = logloss)
+    return model  
+
+feats = np.arange(0, X.shape[1], 1)
+inp_size = np.ceil(1*len(feats))
+inp_size = int(inp_size)
+
+n_split = 5
+bests = []
+seeds = [0,1]
+n_rounds = len(seeds)
+
+for seed in seeds:
+    split_cols = np.random.choice(feats, inp_size, replace = False)
+    for n, (tr, te) in enumerate(MultilabelStratifiedKFold(n_splits = n_split, random_state = seed, shuffle = True).split(X,y)):
+        st = time()
+        tuner = kt.tuners.BayesianOptimization(create_model, kt.Objective("val_logloss", direction = "min"), max_trials = 10, overwrite = True)
+        start_time = time()
+        x_tr = X.astype('float64').values[tr][:, split_cols]
+        x_val = X.astype('float64').values[te][:, split_cols]
+        y0_tr, y0_vals = y0.astype(float).values[tr], y0.astype(float).values[te]
+        y_tr, y_vals = y.astype(float).values[tr], y.astype(float).values[te]
+        x_tt = X_test.astype('float64').values[:, split_cols]
+        callbacks = [EarlyStopping(monitor = 'val_logloss', mode = 'min', patience = 5)]
+        start_time = time()
+        tuner.search(x_tr, y_tr, validation_data = (x_val, y_val), epochs = 150, batch_size = 128, verbose = 0, callbacks = callbacks)
+        n_top = 5
+        best_hps = tuner.get_besbt_hyperparameters(n_top)
+        end_time = time()
+        bests.append(best_hps)
+        for i in range(n_top):
+          print(best_hps[i].values)
+        print('Seed', seed, 'fold', n)
+        del tuner
